@@ -173,7 +173,6 @@ export default function ChatPage() {
     if (!activeId || !content || sending) return;
 
     haptic("light");
-    haptic("light");
     setSending(true);
     setError(null);
     setDraft("");
@@ -250,10 +249,10 @@ export default function ChatPage() {
         </div>
 
         <div className={styles.momentRail}>
-          <button className={styles.myMoment} type="button" title="Moments coming soon">
+          <Link className={styles.myMoment} href="/status" onClick={() => haptic("selection")} title="Open status">
             <span className={styles.avatarRing}><span className={styles.storyAvatar}>{initials(myUsername)}</span><b>+</b></span>
-            <small>Your story</small>
-          </button>
+            <small>Your status</small>
+          </Link>
           {conversations.slice(0, 6).map((conversation) => {
             const other = conversation.participants.find((participant) => participant.user.id !== myUserId)?.user;
             return (

@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { startAuthentication, startRegistration } from "@simplewebauthn/browser";
 import { WorldGlobe } from "@/components/world-globe/WorldGlobe";
 import styles from "./login.module.css";
 
@@ -57,11 +58,18 @@ export default function LoginPage() {
   const [secondsLeft, setSecondsLeft] = useState(300);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [passkeySupported, setPasskeySupported] = useState(false);
+  const [showPasskeyPrompt, setShowPasskeyPrompt] = useState(false);
+  const [passkeyLoading, setPasskeyLoading] = useState(false);
   const inputsRef = useRef<(HTMLInputElement | null)[]>([]);
 
   const country = useMemo(() => COUNTRIES.find((item) => item.code === countryCode) ?? COUNTRIES[0], [countryCode]);
   const phone = `${country.dial}${nationalNumber}`;
   const maskedPhone = nationalNumber ? `${country.dial} •••••• ${nationalNumber.slice(-4).padStart(4, "•")}` : country.dial;
+
+  useEffect(() => {
+    setPasskeySupported(Boolean(window.PublicKeyCredential && navigator.credentials));
+  }, []);
 
   useEffect(() => {
     if (step !== "otp" && step !== "username") return;
@@ -120,8 +128,12 @@ export default function LoginPage() {
         }
         throw new Error(data.error ?? `Verification failed (${response.status}).`);
       }
-      router.push(data.user?.role === "ADMIN" ? "/admin" : "/chat");
-      router.refresh();
+      if (passkeySupported) {
+        setShowPasskeyPrompt(true);
+      } else {
+        router.push(data.user?.role === "ADMIN" ? "/admin" : "/chat");
+        router.refresh();
+      }
     } catch (verifyError) {
       setError(verifyError instanceof Error ? verifyError.message : "Verification failed.");
     } finally {
@@ -148,6 +160,54 @@ export default function LoginPage() {
     event.preventDefault();
     setDigits(code.split(""));
     void submitOtp(code);
+  }
+
+  async function loginWithPasskey() {
+    setError(null);
+    setPasskeyLoading(true);
+    try {
+      const optionsResponse = await fetch("/api/passkeys/authenticate/options", { method: "POST" });
+      const optionsData = await optionsResponse.json();
+      if (!optionsResponse.ok) throw new Error(optionsData.error || "Unable to start passkey login.");
+      const response = await startAuthentication(optionsData.options);
+      const verifyResponse = await fetch("/api/passkeys/authenticate/verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ flowId: optionsData.flowId, response })
+      });
+      const verifyData = await verifyResponse.json();
+      if (!verifyResponse.ok) throw new Error(verifyData.error || "Passkey login failed.");
+      router.push(verifyData.user?.role === "ADMIN" ? "/admin" : "/chat");
+      router.refresh();
+    } catch (passkeyError) {
+      setError(passkeyError instanceof Error ? passkeyError.message : "Passkey login was cancelled.");
+    } finally {
+      setPasskeyLoading(false);
+    }
+  }
+
+  async function createPasskey() {
+    setError(null);
+    setPasskeyLoading(true);
+    try {
+      const optionsResponse = await fetch("/api/passkeys/register/options", { method: "POST" });
+      const optionsData = await optionsResponse.json();
+      if (!optionsResponse.ok) throw new Error(optionsData.error || "Unable to start passkey setup.");
+      const response = await startRegistration(optionsData.options);
+      const verifyResponse = await fetch("/api/passkeys/register/verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ response, name: "This device" })
+      });
+      const verifyData = await verifyResponse.json();
+      if (!verifyResponse.ok) throw new Error(verifyData.error || "Passkey setup failed.");
+      router.push("/chat");
+      router.refresh();
+    } catch (passkeyError) {
+      setError(passkeyError instanceof Error ? passkeyError.message : "Passkey setup was cancelled.");
+    } finally {
+      setPasskeyLoading(false);
+    }
   }
 
   function changeNumber() {
@@ -203,6 +263,16 @@ export default function LoginPage() {
                 <h2>Sign in securely</h2>
                 <p>Select your country and enter your mobile number. Your number is never shown to other users.</p>
               </div>
+
+              {passkeySupported && (
+                <>
+                  <button type="button" className={styles.passkeyButton} onClick={() => void loginWithPasskey()} disabled={passkeyLoading}>
+                    <span className={styles.passkeyIcon}>◉</span>
+                    {passkeyLoading ? "Checking passkey…" : "Continue with Passkey"}
+                  </button>
+                  <div className={styles.orDivider}><span>or</span></div>
+                </>
+              )}
 
               <label className={styles.fieldLabel} htmlFor="country">Country</label>
               <div className={styles.countryField}>
@@ -312,6 +382,21 @@ export default function LoginPage() {
           <p className={styles.footerNote}>By continuing, you agree to use IPChat responsibly.</p>
         </form>
       </section>
+      {showPasskeyPrompt && (
+        <div className={styles.passkeyOverlay}>
+          <section className={styles.passkeyModal}>
+            <span className={styles.passkeyHero}>◉</span>
+            <small>QUICK, SECURE SIGN-IN</small>
+            <h2>Make your next login instant</h2>
+            <p>Use your fingerprint, face, or device screen lock. Your biometric data never leaves your device.</p>
+            {error && <div className={styles.error}>{error}</div>}
+            <button className={styles.primaryButton} type="button" onClick={() => void createPasskey()} disabled={passkeyLoading}>
+              {passkeyLoading ? "Creating passkey…" : "Create Passkey"}
+            </button>
+            <button className={styles.textButton} type="button" onClick={() => { router.push("/chat"); router.refresh(); }}>Not now</button>
+          </section>
+        </div>
+      )}
     </main>
   );
 }

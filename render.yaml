@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: messenger-app
+    name: ipchat
     runtime: node
     plan: free
     buildCommand: npm install --include=dev && npx prisma db push && npm run build
@@ -29,5 +29,9 @@ services:
       - key: OTP_DELIVERY_MODE
         value: ADMIN_PORTAL
       - key: SMS_PROVIDER_API_KEY
+        sync: false
+      - key: PASSKEY_RP_ID
+        sync: false
+      - key: PASSKEY_ORIGIN
         sync: false
     healthCheckPath: /api/health

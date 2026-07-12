@@ -64,8 +64,27 @@ model User {
   createdStatuses     Status[]                  @relation("StatusOwner")
   statusViews         StatusView[]              @relation("StatusViewer")
   statusReplies       StatusReply[]             @relation("StatusReplier")
+  passkeys            Passkey[]
 
   @@index([phoneHash])
+}
+
+model Passkey {
+  id           String    @id @default(cuid())
+  userId       String
+  credentialId String    @unique
+  publicKey    Bytes
+  counter      BigInt    @default(0)
+  transports   String?
+  deviceType   String?
+  backedUp     Boolean   @default(false)
+  name         String    @default("Passkey")
+  createdAt    DateTime  @default(now())
+  lastUsedAt   DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
 }
 
 model LoginSession {
