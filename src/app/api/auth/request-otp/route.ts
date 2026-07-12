@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
-import { issueOtp, hashPhone } from "@/lib/otp";
+import { issueOtp, hashPhone, lastFourDigits } from "@/lib/otp";
+import { saveAdminOtp } from "@/lib/admin-otp";
 import { rateLimit } from "@/lib/redis";
 import { requestOtpSchema } from "@/lib/validators";
 import { parseBody } from "@/lib/parse-body";
@@ -18,28 +19,45 @@ export async function POST(req: NextRequest) {
     rateLimit(`ratelimit:otp:phone:${phoneHash}`, 3, 600),
     rateLimit(`ratelimit:otp:ip:${ip}`, 10, 600)
   ]);
-  if (!phoneOk || !ipOk) return ApiResponse.rateLimited("Too many codes requested. Please wait a few minutes.");
-
-  const code = await issueOtp(phone);
-
-  // SMS provider is pluggable via sendSms() below. Until SMS_PROVIDER_API_KEY
-  // is set, the code is logged in dev only so the flow is testable for free.
-  if (process.env.NODE_ENV !== "production") {
-    logger.info("dev OTP issued", { phone, code });
-  } else if (process.env.SMS_PROVIDER_API_KEY) {
-    await sendSms(phone, `Your verification code is ${code}. It expires in 5 minutes.`);
-  } else {
-    logger.warn("SMS_PROVIDER_API_KEY not set — OTP generated but not sent", { phoneHash });
+  if (!phoneOk || !ipOk) {
+    return ApiResponse.rateLimited("Too many codes requested. Please wait a few minutes.");
   }
 
-  return ApiResponse.success({});
+  const code = await issueOtp(phone);
+  const deliveryMode = process.env.OTP_DELIVERY_MODE?.trim().toUpperCase();
+
+  if (deliveryMode === "ADMIN_PORTAL") {
+    await saveAdminOtp(phone, code);
+
+    // Bootstrap/recovery path for the owner account: before any admin session
+    // exists, the owner can read this short-lived code from private Render logs.
+    if (process.env.OWNER_PHONE_E164?.trim() === phone) {
+      logger.warn("Owner bootstrap OTP issued", { phoneLast4: lastFourDigits(phone), code });
+    } else {
+      logger.info("OTP queued for manual admin delivery", { phoneHash });
+    }
+
+    return ApiResponse.success({ delivery: "manual" });
+  }
+
+  if (process.env.NODE_ENV !== "production") {
+    logger.info("dev OTP issued", { phone, code });
+    return ApiResponse.success({ delivery: "development" });
+  }
+
+  if (process.env.SMS_PROVIDER_API_KEY) {
+    await sendSms(phone, `Your IPChat verification code is ${code}. It expires in 5 minutes.`);
+    return ApiResponse.success({ delivery: "sms" });
+  }
+
+  logger.warn("No OTP delivery provider configured", { phoneHash });
+  return ApiResponse.error("OTP delivery is temporarily unavailable. Please contact the administrator.", 503);
 }
 
 async function sendSms(phone: string, message: string) {
-  // Placeholder for your SMS provider's HTTP API (Twilio-like shape):
-  // await fetch("https://api.your-sms-provider.com/send", {
-  //   method: "POST",
-  //   headers: { Authorization: `Bearer ${process.env.SMS_PROVIDER_API_KEY}` },
-  //   body: JSON.stringify({ to: phone, body: message })
-  // });
+  // Integrate the selected provider here before enabling SMS mode in production.
+  // This intentionally fails closed instead of pretending an SMS was delivered.
+  void phone;
+  void message;
+  throw new Error("SMS provider integration is not configured.");
 }

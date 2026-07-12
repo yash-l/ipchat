@@ -24,8 +24,6 @@ export function lastFourDigits(phoneE164: string): string {
 }
 
 function hashCode(code: string, phoneHash: string): string {
-  // Salting with the phoneHash means two users who happen to get the same
-  // 6-digit code don't produce the same stored value.
   return crypto.createHash("sha256").update(`${code}:${phoneHash}:${getSecret()}`).digest("hex");
 }
 
@@ -34,11 +32,10 @@ function otpKey(phoneHash: string): string {
 }
 
 export function generateOtpCode(): string {
-  // 6-digit code, zero-padded. crypto.randomInt is CSPRNG-backed.
   return crypto.randomInt(0, 1_000_000).toString().padStart(6, "0");
 }
 
-/** Creates and stores a new OTP for a phone number, returns the plaintext code to send via SMS. */
+/** Creates and stores a new OTP for a phone number, returns the plaintext code for delivery. */
 export async function issueOtp(phoneE164: string): Promise<string> {
   const phoneHash = hashPhone(phoneE164);
   const code = generateOtpCode();
@@ -49,7 +46,16 @@ export async function issueOtp(phoneE164: string): Promise<string> {
 
 export type OtpVerifyResult = "ok" | "expired_or_missing" | "too_many_attempts" | "incorrect";
 
-export async function verifyOtp(phoneE164: string, code: string): Promise<OtpVerifyResult> {
+/**
+ * Validates an OTP. `consume: false` is used only for the first-time-account
+ * username step so the same verified code can be consumed after a valid,
+ * available username is supplied.
+ */
+export async function verifyOtp(
+  phoneE164: string,
+  code: string,
+  options: { consume?: boolean } = {}
+): Promise<OtpVerifyResult> {
   const phoneHash = hashPhone(phoneE164);
   const key = otpKey(phoneHash);
   const raw = await redis.get<string>(key);
@@ -63,10 +69,17 @@ export async function verifyOtp(phoneE164: string, code: string): Promise<OtpVer
 
   if (record.codeHash !== hashCode(code, phoneHash)) {
     record.attempts += 1;
-    await redis.set(key, JSON.stringify(record), { ex: OTP_TTL_SECONDS });
+    const ttl = await redis.ttl(key);
+    if (ttl > 0) {
+      await redis.set(key, JSON.stringify(record), { ex: ttl });
+    } else {
+      await redis.del(key);
+    }
     return "incorrect";
   }
 
-  await redis.del(key); // one-time use
+  if (options.consume !== false) {
+    await redis.del(key);
+  }
   return "ok";
 }

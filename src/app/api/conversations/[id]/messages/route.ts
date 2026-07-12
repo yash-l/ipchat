@@ -5,6 +5,7 @@ import { createMessageSchema, paginationSchema } from "@/lib/validators";
 import { parseBody, parseQuery } from "@/lib/parse-body";
 import { ApiResponse } from "@/lib/api-response";
 import { rateLimit } from "@/lib/redis";
+import { decryptMessageContent, encryptMessageContent } from "@/lib/message-crypto";
 
 async function assertParticipant(conversationId: string, userId: string) {
   const membership = await db.conversationParticipant.findUnique({
@@ -27,13 +28,11 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
     ...(cursor ? { skip: 1, cursor: { id: cursor } } : {})
   });
 
-  // A view-once photo that's already been viewed shows as "opened", not
-  // exposed forever.
   type MessageRow = (typeof messages)[number];
-  const shaped = messages.map((m: MessageRow) => ({
-    ...m,
-    mediaUrl: m.viewOnce && m.viewedAt ? null : m.mediaUrl,
-    content: m.deletedAt ? null : m.content
+  const shaped = messages.map((message: MessageRow) => ({
+    ...message,
+    mediaUrl: message.viewOnce && message.viewedAt ? null : message.mediaUrl,
+    content: message.deletedAt ? null : decryptMessageContent(message.content)
   }));
 
   const nextCursor = messages.length === take ? messages[messages.length - 1].id : null;
@@ -52,16 +51,25 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   if (!parsed.ok) return parsed.response;
   const { type, content, mediaUrl, viewOnce } = parsed.data;
 
+  const storedContent = type === "PHOTO" ? null : encryptMessageContent(content ?? "");
   const message = await db.message.create({
     data: {
       conversationId: params.id,
       senderId: session.userId,
       type,
-      content: type === "PHOTO" ? null : content,
+      content: storedContent,
       mediaUrl: type === "PHOTO" ? mediaUrl : null,
       viewOnce: type === "PHOTO" ? !!viewOnce : false
     }
   });
 
-  return ApiResponse.success({ message }, 201);
+  return ApiResponse.success(
+    {
+      message: {
+        ...message,
+        content: type === "PHOTO" ? null : content
+      }
+    },
+    201
+  );
 }
