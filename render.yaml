@@ -1,0 +1,25 @@
+services:
+  - type: web
+    name: messenger-app
+    runtime: node
+    plan: free
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        sync: false
+      - key: DIRECT_URL
+        sync: false
+      - key: UPSTASH_REDIS_REST_URL
+        sync: false
+      - key: UPSTASH_REDIS_REST_TOKEN
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: PHONE_HASH_SECRET
+        generateValue: true
+      - key: SMS_PROVIDER_API_KEY
+        sync: false
+    healthCheckPath: /api/health
