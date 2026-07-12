@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import styles from "./chat.module.css";
+import { haptic } from "@/lib/haptics";
 
 interface Participant {
   user: { id: string; username: string; displayName: string; avatarUrl: string | null };
@@ -171,6 +172,7 @@ export default function ChatPage() {
     const content = draft.trim();
     if (!activeId || !content || sending) return;
 
+    haptic("light");
     setSending(true);
     setError(null);
     setDraft("");
@@ -235,7 +237,7 @@ export default function ChatPage() {
               <span className={styles.eyebrow}>IPCHAT</span>
               <h1>Messages</h1>
             </div>
-            <button className={styles.roundButton} type="button" onClick={() => setShowNewChat((value) => !value)} aria-label="New chat">
+            <button className={styles.roundButton} type="button" onClick={() => { haptic("selection"); setShowNewChat((value) => !value); }} aria-label="New chat">
               <Icon name="compose" />
             </button>
           </div>
@@ -327,8 +329,8 @@ export default function ChatPage() {
                 <span><i /> @{activeOther?.username ?? "user"}</span>
               </div>
               <div className={styles.headerActions}>
-                <button type="button" title="Voice calling coming soon" disabled><Icon name="phone" /></button>
-                <button type="button" title="Video calling coming soon" disabled><Icon name="video" /></button>
+                <button type="button" title="Voice call" onClick={() => { haptic("medium"); router.push("/calls"); }}><Icon name="phone" /></button>
+                <button type="button" title="Video call" onClick={() => { haptic("medium"); router.push("/calls"); }}><Icon name="video" /></button>
                 <button type="button" title="More"><Icon name="more" /></button>
               </div>
             </header>
@@ -394,9 +396,10 @@ export default function ChatPage() {
       </section>
 
       <nav className={styles.mobileNav}>
-        <button className={styles.navActive} type="button" onClick={() => setActiveId(null)}><span>💬</span><small>Chats</small></button>
-        <Link href="/camera"><span>◉</span><small>Camera</small></Link>
-        <Link href="/status"><span>◌</span><small>Status</small></Link>
+        <button className={styles.navActive} type="button" onClick={() => { haptic("selection"); setActiveId(null); }}><span>💬</span><small>Chats</small></button>
+        <Link href="/calls" onClick={() => haptic("selection")}><span>☎</span><small>Calls</small></Link>
+        <Link href="/status" onClick={() => haptic("selection")}><span>◌</span><small>Status</small></Link>
+        <Link href="/settings" onClick={() => haptic("selection")}><span>⚙</span><small>Settings</small></Link>
       </nav>
 
       {openPhoto && (
