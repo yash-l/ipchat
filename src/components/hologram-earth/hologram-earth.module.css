@@ -1,0 +1,210 @@
+.root {
+  --tilt-x: -4deg;
+  --tilt-y: 8deg;
+  position: relative;
+  width: min(43vw, 610px);
+  aspect-ratio: 1;
+  display: grid;
+  place-items: center;
+  isolation: isolate;
+  perspective: 1100px;
+  user-select: none;
+  touch-action: none;
+}
+
+.compact { width: min(56vw, 470px); }
+.interactive { cursor: grab; }
+.interactive:active { cursor: grabbing; }
+
+.ambient {
+  position: absolute;
+  inset: 11%;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle, rgba(76, 240, 255, .2), rgba(28, 112, 255, .12) 42%, rgba(79, 51, 255, .08) 61%, transparent 76%);
+  filter: blur(34px);
+  transform: scale(1.12);
+  animation: ambientPulse 4.8s ease-in-out infinite;
+}
+
+.stage {
+  position: relative;
+  width: 82%;
+  height: 82%;
+  display: grid;
+  place-items: center;
+  transform-style: preserve-3d;
+  transform: rotateX(var(--tilt-x)) rotateY(var(--tilt-y));
+  transition: filter .2s ease;
+  will-change: transform;
+}
+
+.interactive:hover .stage { filter: brightness(1.08) saturate(1.08); }
+
+.earth {
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  filter: drop-shadow(0 0 17px rgba(47, 229, 255, .34)) drop-shadow(0 0 52px rgba(39, 102, 255, .24));
+}
+
+.shadowOrbit { fill: none; stroke: rgba(74, 225, 255, .18); stroke-width: 1.4; stroke-dasharray: 8 10; animation: dashOrbit 15s linear infinite; }
+.coreHalo { fill: rgba(42, 203, 255, .035); stroke: rgba(91, 232, 255, .16); stroke-width: 1; }
+.sphere { stroke: rgba(129, 242, 255, .58); stroke-width: 1.5; }
+.sphereOutline { fill: none; stroke: rgba(151, 248, 255, .82); stroke-width: 1.5; }
+.sphereOutlineFaint { fill: none; stroke: rgba(83, 205, 255, .16); stroke-width: 1; stroke-dasharray: 4 9; animation: dashOrbitReverse 19s linear infinite; }
+
+.graticule { fill: none; stroke: rgba(117, 231, 255, .2); stroke-width: 1; vector-effect: non-scaling-stroke; }
+.continents { fill: rgba(62, 225, 255, .095); stroke: url(#landStroke); stroke-width: 2.2; stroke-linejoin: round; }
+.networkLines { fill: none; stroke: rgba(112, 239, 255, .42); stroke-width: 1; stroke-dasharray: 5 7; animation: networkFlow 9s linear infinite; }
+.networkLines circle { fill: #9affff; stroke: rgba(86, 225, 255, .5); stroke-width: 5; }
+.scanBeam { animation: scan 4.2s linear infinite; mix-blend-mode: screen; }
+.specular { fill: none; stroke: rgba(255,255,255,.28); stroke-width: 6; stroke-linecap: round; filter: blur(2px); }
+
+.marker { opacity: .55; }
+.markerActive { opacity: 1; }
+.markerWave { fill: none; stroke: #ff6680; stroke-width: 1.5; animation: markerPing 2.2s ease-out infinite; }
+.markerOuter { fill: rgba(255, 69, 101, .2); stroke: #ffffff; stroke-width: 2; }
+.markerCore { fill: #ff4f70; stroke: #ffffff; stroke-width: 1; }
+.markerStem { fill: none; stroke: url(#landStroke); stroke-width: 1.2; stroke-dasharray: 3 4; }
+
+.equatorBeam,
+.verticalBeam {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  pointer-events: none;
+  border: 1px solid rgba(73, 229, 255, .22);
+  border-radius: 50%;
+  box-shadow: 0 0 16px rgba(65, 224, 255, .09);
+}
+.equatorBeam { width: 94%; height: 26%; transform: translate(-50%, -50%) rotate(-10deg); }
+.verticalBeam { width: 31%; height: 92%; transform: translate(-50%, -50%) rotate(12deg); }
+
+.hudRingOuter,
+.hudRingMiddle,
+.hudRingInner {
+  position: absolute;
+  border-radius: 50%;
+  pointer-events: none;
+}
+.hudRingOuter {
+  inset: 2%;
+  border: 1px solid rgba(78, 221, 255, .13);
+  border-left-color: rgba(111, 239, 255, .62);
+  border-right-color: rgba(93, 100, 255, .35);
+  animation: ringRotate 22s linear infinite;
+}
+.hudRingOuter::before,
+.hudRingOuter::after {
+  content: "";
+  position: absolute;
+  inset: 4.5%;
+  border: 1px dashed rgba(94, 229, 255, .13);
+  border-radius: 50%;
+}
+.hudRingOuter::after { inset: 10%; border-style: solid; border-color: rgba(90, 128, 255, .12); }
+.hudRingOuter > i {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  border: 2px solid #6aeaff;
+  background: #071126;
+  box-shadow: 0 0 13px rgba(91, 231, 255, .65);
+}
+.hudRingOuter > i:nth-child(1) { left: 14%; top: 15%; }
+.hudRingOuter > i:nth-child(2) { right: 9%; top: 40%; }
+.hudRingOuter > i:nth-child(3) { left: 30%; bottom: 2%; }
+.hudRingOuter > i:nth-child(4) { left: 2%; top: 58%; width: 6px; height: 6px; }
+.hudRingMiddle { inset: 9%; border: 1px dashed rgba(84, 218, 255, .2); animation: ringRotateReverse 15s linear infinite; }
+.hudRingInner { inset: 17%; border: 1px solid rgba(96, 230, 255, .08); box-shadow: inset 0 0 25px rgba(44, 211, 255, .06); }
+
+.reticle { position: absolute; inset: 0; pointer-events: none; }
+.reticle > span { position: absolute; width: 42px; height: 42px; border-color: rgba(97, 231, 255, .33); }
+.reticle > span:nth-child(1) { left: 12%; top: 12%; border-left: 1px solid; border-top: 1px solid; }
+.reticle > span:nth-child(2) { right: 12%; top: 12%; border-right: 1px solid; border-top: 1px solid; }
+.reticle > span:nth-child(3) { left: 12%; bottom: 12%; border-left: 1px solid; border-bottom: 1px solid; }
+.reticle > span:nth-child(4) { right: 12%; bottom: 12%; border-right: 1px solid; border-bottom: 1px solid; }
+
+.telemetry {
+  position: absolute;
+  min-width: 126px;
+  padding: 11px 12px;
+  border: 1px solid rgba(109, 230, 255, .13);
+  border-radius: 13px;
+  color: rgba(234, 251, 255, .82);
+  background: linear-gradient(145deg, rgba(8, 20, 43, .72), rgba(8, 12, 29, .56));
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.05), 0 15px 38px rgba(0,0,0,.18);
+  backdrop-filter: blur(13px);
+  pointer-events: none;
+}
+.telemetry::before { content: ""; position: absolute; top: 50%; width: 45px; height: 1px; background: linear-gradient(90deg, rgba(89,226,255,.5), transparent); }
+.telemetryLeft { left: -1%; top: 27%; }
+.telemetryLeft::before { left: 100%; }
+.telemetryRight { right: -1%; bottom: 25%; text-align: right; }
+.telemetryRight::before { right: 100%; transform: rotate(180deg); }
+.telemetry small,
+.telemetry strong,
+.telemetry span { display: block; }
+.telemetry small { color: rgba(96, 231, 255, .68); font-size: 7px; font-weight: 900; letter-spacing: .14em; }
+.telemetry strong { margin-top: 5px; font-size: 12px; letter-spacing: .08em; }
+.telemetry span { margin-top: 4px; color: rgba(185, 210, 229, .58); font-size: 7px; }
+.telemetry span i { display: inline-block; width: 5px; height: 5px; margin-right: 5px; border-radius: 50%; background: #3de6a6; box-shadow: 0 0 8px #3de6a6; }
+
+.label {
+  position: absolute;
+  left: 50%;
+  bottom: 7.5%;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  padding: 8px 12px;
+  border: 1px solid rgba(101, 229, 255, .13);
+  border-radius: 999px;
+  color: rgba(221, 247, 255, .74);
+  background: rgba(4, 13, 31, .56);
+  backdrop-filter: blur(14px);
+  font-size: 7.5px;
+  font-weight: 900;
+  letter-spacing: .14em;
+  pointer-events: none;
+}
+.label i { width: 6px; height: 6px; border-radius: 50%; background: #3de6a6; box-shadow: 0 0 9px #3de6a6; }
+.dragHint { position: absolute; right: 13%; bottom: 15%; color: rgba(126, 226, 241, .36); font-size: 6.5px; font-weight: 900; letter-spacing: .18em; pointer-events: none; }
+
+@keyframes ambientPulse { 0%,100% { opacity: .65; transform: scale(1.02); } 50% { opacity: 1; transform: scale(1.13); } }
+@keyframes ringRotate { to { transform: rotate(360deg); } }
+@keyframes ringRotateReverse { to { transform: rotate(-360deg); } }
+@keyframes dashOrbit { to { stroke-dashoffset: -180; } }
+@keyframes dashOrbitReverse { to { stroke-dashoffset: 180; } }
+@keyframes networkFlow { to { stroke-dashoffset: -120; } }
+@keyframes scan { 0% { transform: translateY(-130px); opacity: 0; } 12% { opacity: 1; } 88% { opacity: .85; } 100% { transform: translateY(450px); opacity: 0; } }
+@keyframes markerPing { from { r: 8px; opacity: 1; } to { r: 35px; opacity: 0; } }
+
+@media (max-width: 820px) {
+  .root { width: min(91vw, 540px); }
+  .compact { width: min(92vw, 450px); }
+  .telemetry { min-width: 105px; padding: 9px; }
+  .telemetryLeft { left: 3%; }
+  .telemetryRight { right: 3%; }
+}
+
+@media (max-width: 520px) {
+  .telemetry { display: none; }
+  .dragHint { display: none; }
+  .label { bottom: 4%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ambient,
+  .hudRingOuter,
+  .hudRingMiddle,
+  .sphereOutlineFaint,
+  .shadowOrbit,
+  .networkLines,
+  .scanBeam,
+  .markerWave { animation: none !important; }
+  .stage { transform: none !important; }
+}

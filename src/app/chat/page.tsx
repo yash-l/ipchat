@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import styles from "./chat.module.css";
 
@@ -394,8 +395,8 @@ export default function ChatPage() {
 
       <nav className={styles.mobileNav}>
         <button className={styles.navActive} type="button" onClick={() => setActiveId(null)}><span>💬</span><small>Chats</small></button>
-        <button type="button" title="Camera coming soon" disabled><span>◉</span><small>Camera</small></button>
-        <button type="button" title="Moments coming soon" disabled><span>◌</span><small>Stories</small></button>
+        <Link href="/camera"><span>◉</span><small>Camera</small></Link>
+        <Link href="/status"><span>◌</span><small>Status</small></Link>
       </nav>
 
       {openPhoto && (

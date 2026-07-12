@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { verifyOtp, hashPhone, lastFourDigits } from "@/lib/otp";
 import { removeAdminOtpByPhone } from "@/lib/admin-otp";
 import { createSession, setSessionCookie } from "@/lib/session";
+import { parseDeviceInfo } from "@/lib/device-info";
 import { db } from "@/lib/db";
 import { verifyOtpSchema } from "@/lib/validators";
 import { parseBody } from "@/lib/parse-body";
@@ -84,10 +85,29 @@ export async function POST(req: NextRequest) {
 
   await removeAdminOtpByPhone(phone).catch(() => undefined);
 
-  const token = await createSession({ userId: user.id, role: user.role, username: user.username });
+  const userAgent = req.headers.get("user-agent") ?? "Unknown browser";
+  const device = parseDeviceInfo(userAgent);
+  const loginSession = await db.loginSession.create({
+    data: {
+      userId: user.id,
+      userAgent,
+      deviceLabel: device.deviceLabel,
+      deviceType: device.deviceType,
+      browser: device.browser,
+      os: device.os
+    }
+  });
+
+  const token = await createSession({
+    userId: user.id,
+    role: user.role,
+    username: user.username,
+    sessionId: loginSession.id
+  });
   await setSessionCookie(token);
 
   return ApiResponse.success({
-    user: { id: user.id, username: user.username, displayName: user.displayName, role: user.role }
+    user: { id: user.id, username: user.username, displayName: user.displayName, role: user.role },
+    session: { id: loginSession.id, deviceLabel: loginSession.deviceLabel }
   });
 }

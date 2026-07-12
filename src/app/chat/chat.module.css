@@ -715,7 +715,8 @@
     backdrop-filter: blur(22px) saturate(170%);
   }
   .hasActive .mobileNav { display: none; }
-  .mobileNav button {
+  .mobileNav button,
+  .mobileNav a {
     display: grid;
     justify-items: center;
     gap: 2px;
@@ -724,6 +725,7 @@
     background: transparent;
   }
   .mobileNav button:disabled { opacity: .6; }
+  .mobileNav a { text-decoration: none; }
   .mobileNav span { font-size: 20px; line-height: 1; }
   .mobileNav small { font-size: 9px; font-weight: 700; }
   .mobileNav .navActive { color: var(--blue); }

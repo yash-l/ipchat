@@ -1,6 +1,6 @@
-// Prisma schema — Postgres via Neon (free tier).
-// DATABASE_URL = Neon "pooled" connection string (used at runtime, serverless-safe)
-// DIRECT_URL   = Neon "direct" connection string (used only for migrations)
+// Prisma schema — Postgres via Neon.
+// DATABASE_URL = pooled runtime connection string.
+// DIRECT_URL   = direct connection string for migrations/schema sync.
 
 generator client {
   provider = "prisma-client-js"
@@ -29,34 +29,52 @@ enum RequestStatus {
   FULFILLED
 }
 
-// A user's real phone number is never stored in plaintext.
-// phoneHash = HMAC-SHA256(phone, PHONE_HASH_SECRET) — deterministic, used to look up on login.
-// phoneLast4 = last 4 digits only, for display in the UI / admin panel.
 model User {
-  id          String    @id @default(cuid())
-  username    String    @unique
+  id          String   @id @default(cuid())
+  username    String   @unique
   displayName String
-  phoneHash   String    @unique
+  phoneHash   String   @unique
   phoneLast4  String
   avatarUrl   String?
-  role        Role      @default(USER)
-  createdAt   DateTime  @default(now())
-  lastSeenAt  DateTime  @default(now())
-  isBanned    Boolean   @default(false)
+  role        Role     @default(USER)
+  createdAt   DateTime @default(now())
+  lastSeenAt  DateTime @default(now())
+  isBanned    Boolean  @default(false)
 
-  memberships          ConversationParticipant[]
-  sentMessages         Message[]                 @relation("SentMessages")
-  auditLogsAsActor     AuditLog[]                @relation("AuditActor")
-  dataRequestsMade     DataAccessRequest[]        @relation("RequestedBy")
-  dataRequestsAboutMe  DataAccessRequest[]        @relation("TargetUser")
+  memberships         ConversationParticipant[]
+  sentMessages        Message[]                 @relation("SentMessages")
+  auditLogsAsActor    AuditLog[]                @relation("AuditActor")
+  dataRequestsMade    DataAccessRequest[]       @relation("RequestedBy")
+  dataRequestsAboutMe DataAccessRequest[]       @relation("TargetUser")
+  loginSessions       LoginSession[]
 
   @@index([phoneHash])
 }
 
-// Note: OTP codes are intentionally NOT stored in Postgres. They're
-// short-lived (5 min TTL) and live in Upstash Redis (see src/lib/otp.ts),
-// which is both a better fit (native TTL) and keeps Neon's free-tier
-// row/storage budget for real data.
+model LoginSession {
+  id           String    @id @default(cuid())
+  userId       String
+  userAgent    String
+  deviceLabel  String
+  deviceType   String
+  browser      String
+  os           String
+  timezone     String?
+  language     String?
+  screen       String?
+  platform     String?
+  latitude     Float?
+  longitude    Float?
+  accuracy     Float?
+  locationMode String?   @default("off")
+  createdAt    DateTime  @default(now())
+  lastSeenAt   DateTime  @default(now())
+  revokedAt    DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, revokedAt, lastSeenAt])
+}
 
 model Conversation {
   id        String   @id @default(cuid())
@@ -69,10 +87,10 @@ model Conversation {
 }
 
 model ConversationParticipant {
-  id             String       @id @default(cuid())
+  id             String   @id @default(cuid())
   conversationId String
   userId         String
-  joinedAt       DateTime     @default(now())
+  joinedAt       DateTime @default(now())
 
   conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -80,20 +98,17 @@ model ConversationParticipant {
   @@unique([conversationId, userId])
 }
 
-// Messages default to E2E-friendly storage: `content` holds ciphertext once
-// client-side encryption is wired up. viewOnce photos are deleted (contentUrl
-// cleared) the moment they're viewed, not just hidden client-side.
 model Message {
   id             String      @id @default(cuid())
   conversationId String
   senderId       String
   type           MessageType @default(TEXT)
-  content        String?     // text content or ciphertext
-  mediaUrl       String?     // set for PHOTO; nulled out after one-time view
+  content        String?
+  mediaUrl       String?
   viewOnce       Boolean     @default(false)
   viewedAt       DateTime?
   createdAt      DateTime    @default(now())
-  deletedAt      DateTime?   // soft delete: content/mediaUrl cleared on delete
+  deletedAt      DateTime?
 
   conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   sender       User         @relation("SentMessages", fields: [senderId], references: [id], onDelete: Cascade)
@@ -101,15 +116,12 @@ model Message {
   @@index([conversationId, createdAt])
 }
 
-// A formal, reviewable request for an admin to access a user's data —
-// e.g. in response to a legal/law-enforcement request. Nothing is pulled
-// without a row here, and every row is paired with an AuditLog entry.
 model DataAccessRequest {
   id             String        @id @default(cuid())
   requestedById  String
   targetUserId   String
-  reason         String        // free-text justification
-  legalReference String?       // subpoena / court order / case number
+  reason         String
+  legalReference String?
   status         RequestStatus @default(PENDING)
   createdAt      DateTime      @default(now())
   fulfilledAt    DateTime?
@@ -120,14 +132,11 @@ model DataAccessRequest {
   @@index([status, createdAt])
 }
 
-// Immutable audit trail. Every admin action that touches user data writes
-// one of these — this is what makes the admin access defensible, not just
-// "trust us."
 model AuditLog {
   id         String   @id @default(cuid())
   actorId    String
-  action     String   // e.g. "DATA_EXPORT", "USER_BAN", "REQUEST_APPROVED"
-  targetType String   // e.g. "User", "Conversation", "Message"
+  action     String
+  targetType String
   targetId   String
   metadata   Json?
   createdAt  DateTime @default(now())

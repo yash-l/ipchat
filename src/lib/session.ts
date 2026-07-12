@@ -6,6 +6,7 @@ const COOKIE_NAME = "session";
 const SESSION_TTL = "30d";
 const ISSUER = "messenger-app";
 const AUDIENCE = "messenger-app-users";
+const REVOKED_PREFIX = "session:revoked:";
 
 function getSecretKey(): Uint8Array {
   const secret = process.env.JWT_SECRET;
@@ -18,7 +19,9 @@ function getSecretKey(): Uint8Array {
 const sessionPayloadSchema = z.object({
   userId: z.string().min(1),
   role: z.enum(["USER", "ADMIN"]),
-  username: z.string().min(1)
+  username: z.string().min(1),
+  // Optional keeps sessions issued before the session-registry upgrade readable.
+  sessionId: z.string().min(1).optional()
 });
 
 export type SessionPayload = z.infer<typeof sessionPayloadSchema>;
@@ -47,9 +50,6 @@ export function clearSessionCookie() {
   cookies().delete(COOKIE_NAME);
 }
 
-/** Verifies signature, alg, issuer, audience, and expiry, then validates the
- *  payload shape at runtime — a cryptographically valid but malformed/stale
- *  token (e.g. from an older schema) is rejected rather than trusted as-is. */
 async function verify(token: string): Promise<SessionPayload | null> {
   try {
     const { payload } = await jwtVerify(token, getSecretKey(), {
@@ -64,15 +64,28 @@ async function verify(token: string): Promise<SessionPayload | null> {
   }
 }
 
+export async function isSessionRevoked(sessionId?: string): Promise<boolean> {
+  if (!sessionId) return false;
+  const { redis } = await import("./redis");
+  return (await redis.exists(`${REVOKED_PREFIX}${sessionId}`)) > 0;
+}
+
+export async function revokeSessionId(sessionId: string): Promise<void> {
+  const { redis } = await import("./redis");
+  await redis.set(`${REVOKED_PREFIX}${sessionId}`, "1", { ex: 60 * 60 * 24 * 31 });
+}
+
 export async function getSession(): Promise<SessionPayload | null> {
   const token = cookies().get(COOKIE_NAME)?.value;
   if (!token) return null;
-  return verify(token);
+  const session = await verify(token);
+  if (!session) return null;
+  if (await isSessionRevoked(session.sessionId)) return null;
+  return session;
 }
 
-/** For middleware (edge runtime) — verifies a raw token string without next/headers. */
 export async function verifySessionToken(token: string): Promise<SessionPayload | null> {
   return verify(token);
 }
 
-export { COOKIE_NAME };
+export { COOKIE_NAME, REVOKED_PREFIX };
