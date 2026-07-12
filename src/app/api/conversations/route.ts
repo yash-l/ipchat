@@ -5,6 +5,7 @@ import { createConversationSchema } from "@/lib/validators";
 import { parseBody } from "@/lib/parse-body";
 import { ApiResponse } from "@/lib/api-response";
 import { rateLimit } from "@/lib/redis";
+import { decryptMessageContent } from "@/lib/message-crypto";
 
 export async function GET() {
   const session = await getSession();
@@ -20,7 +21,15 @@ export async function GET() {
     take: 100
   });
 
-  return ApiResponse.success({ conversations });
+  const shaped = conversations.map((conversation) => ({
+    ...conversation,
+    messages: conversation.messages.map((message) => ({
+      ...message,
+      content: message.deletedAt ? null : decryptMessageContent(message.content)
+    }))
+  }));
+
+  return ApiResponse.success({ conversations: shaped });
 }
 
 export async function POST(req: NextRequest) {

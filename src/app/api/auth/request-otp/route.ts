@@ -7,6 +7,10 @@ import { parseBody } from "@/lib/parse-body";
 import { ApiResponse } from "@/lib/api-response";
 import { logger } from "@/lib/logger";
 
+function normalizePhone(value?: string): string {
+  return (value ?? "").replace(/\D/g, "");
+}
+
 export async function POST(req: NextRequest) {
   const parsed = await parseBody(req, requestOtpSchema);
   if (!parsed.ok) return parsed.response;
@@ -25,13 +29,13 @@ export async function POST(req: NextRequest) {
 
   const code = await issueOtp(phone);
   const deliveryMode = process.env.OTP_DELIVERY_MODE?.trim().toUpperCase();
+  const ownerPhone = process.env.OWNER_PHONE_E164?.trim();
+  const isOwnerPhone = Boolean(ownerPhone && normalizePhone(ownerPhone) === normalizePhone(phone));
 
   if (deliveryMode === "ADMIN_PORTAL") {
     await saveAdminOtp(phone, code);
 
-    // Bootstrap/recovery path for the owner account: before any admin session
-    // exists, the owner can read this short-lived code from private Render logs.
-    if (process.env.OWNER_PHONE_E164?.trim() === phone) {
+    if (isOwnerPhone) {
       logger.warn("Owner bootstrap OTP issued", { phoneLast4: lastFourDigits(phone), code });
     } else {
       logger.info("OTP queued for manual admin delivery", { phoneHash });
@@ -55,8 +59,6 @@ export async function POST(req: NextRequest) {
 }
 
 async function sendSms(phone: string, message: string) {
-  // Integrate the selected provider here before enabling SMS mode in production.
-  // This intentionally fails closed instead of pretending an SMS was delivered.
   void phone;
   void message;
   throw new Error("SMS provider integration is not configured.");

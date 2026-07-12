@@ -14,6 +14,13 @@ const resultMessages: Record<string, string> = {
   incorrect: "Incorrect code. Please try again."
 };
 
+function samePhone(left?: string, right?: string): boolean {
+  const normalize = (value?: string) => (value ?? "").replace(/\D/g, "");
+  const a = normalize(left);
+  const b = normalize(right);
+  return Boolean(a && b && a === b);
+}
+
 export async function POST(req: NextRequest) {
   const parsed = await parseBody(req, verifyOtpSchema);
   if (!parsed.ok) return parsed.response;
@@ -27,8 +34,6 @@ export async function POST(req: NextRequest) {
   let user = await db.user.findUnique({ where: { phoneHash } });
 
   if (!user) {
-    // First validate without consuming so a new user can choose a username
-    // without needing a second OTP.
     const firstCheck = await verifyOtp(phone, code, { consume: false });
     if (firstCheck !== "ok") return ApiResponse.error(resultMessages[firstCheck], 400);
 
@@ -55,7 +60,7 @@ export async function POST(req: NextRequest) {
         displayName: username,
         phoneHash,
         phoneLast4: lastFourDigits(phone),
-        role: ownerPhone && phone === ownerPhone ? "ADMIN" : "USER"
+        role: samePhone(ownerPhone, phone) ? "ADMIN" : "USER"
       }
     });
   } else {
@@ -67,7 +72,7 @@ export async function POST(req: NextRequest) {
     }
 
     const ownerPhone = process.env.OWNER_PHONE_E164?.trim();
-    const shouldBeAdmin = Boolean(ownerPhone && phone === ownerPhone);
+    const shouldBeAdmin = samePhone(ownerPhone, phone);
     user = await db.user.update({
       where: { id: user.id },
       data: {

@@ -2,9 +2,43 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import styles from "./login.module.css";
 
 type Step = "phone" | "otp" | "username";
 type Delivery = "manual" | "sms" | "development" | null;
+
+type ApiPayload = {
+  error?: string;
+  delivery?: Delivery;
+  details?: { newAccount?: boolean };
+  user?: { role?: "USER" | "ADMIN" };
+};
+
+async function readPayload(response: Response): Promise<ApiPayload> {
+  const text = await response.text();
+  if (!text) return {};
+  try {
+    return JSON.parse(text) as ApiPayload;
+  } catch {
+    return {};
+  }
+}
+
+function TelegramMark() {
+  return (
+    <svg viewBox="0 0 48 48" aria-hidden="true">
+      <path d="M39.8 9.2 33.7 38c-.5 2-1.9 2.5-3.5 1.6l-9.3-6.9-4.5 4.4c-.5.5-.9.9-1.8.9l.6-9.5 17.4-15.7c.8-.7-.2-1.1-1.2-.4L9.9 26.1.6 23.2c-2-.6-2.1-2 .4-3L37.4 6.1c1.7-.6 3.2.4 2.4 3.1Z" fill="currentColor" />
+    </svg>
+  );
+}
+
+function LockIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M7.5 10V7.8a4.5 4.5 0 0 1 9 0V10m-10 0h11a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2h-11a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2Z" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+    </svg>
+  );
+}
 
 export default function LoginPage() {
   const router = useRouter();
@@ -35,12 +69,15 @@ export default function LoginPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ phone })
       });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error ?? "Unable to request code.");
-      setDelivery((data.delivery as Delivery) ?? null);
+      const data = await readPayload(response);
+      if (!response.ok) {
+        throw new Error(data.error ?? `Unable to request code (${response.status}).`);
+      }
+      setDelivery(data.delivery ?? null);
       setDigits(["", "", "", "", "", ""]);
       setSecondsLeft(300);
       setStep("otp");
+      window.setTimeout(() => inputsRef.current[0]?.focus(), 100);
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "Unable to request code.");
     } finally {
@@ -54,6 +91,7 @@ export default function LoginPage() {
   }
 
   async function submitOtp(code: string, chosenUsername?: string) {
+    if (loading) return;
     setError(null);
     setLoading(true);
     try {
@@ -62,7 +100,7 @@ export default function LoginPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ phone, code, username: chosenUsername })
       });
-      const data = await response.json();
+      const data = await readPayload(response);
 
       if (!response.ok) {
         if (data.details?.newAccount) {
@@ -70,7 +108,7 @@ export default function LoginPage() {
           setStep("username");
           return;
         }
-        throw new Error(data.error ?? "Verification failed.");
+        throw new Error(data.error ?? `Verification failed (${response.status}).`);
       }
 
       router.push(data.user?.role === "ADMIN" ? "/admin" : "/chat");
@@ -101,108 +139,164 @@ export default function LoginPage() {
     const code = event.clipboardData.getData("text").replace(/\D/g, "").slice(0, 6);
     if (code.length !== 6) return;
     event.preventDefault();
-    const next = code.split("");
-    setDigits(next);
+    setDigits(code.split(""));
     void submitOtp(code);
   }
 
   const countdown = `${Math.floor(secondsLeft / 60)}:${String(secondsLeft % 60).padStart(2, "0")}`;
 
   return (
-    <div className="auth-shell">
-      <form
-        className="card auth-card"
-        onSubmit={
-          step === "phone"
-            ? requestOtp
-            : step === "username"
-              ? (event) => {
-                  event.preventDefault();
-                  void submitOtp(digits.join(""), username);
-                }
-              : (event) => event.preventDefault()
-        }
-      >
-        <div className="admin-v2-brand" style={{ padding: 0 }}>
-          <div className="admin-v2-logo">IP</div>
-          <div><strong>IPChat</strong><span>Private web messenger</span></div>
+    <main className={styles.shell}>
+      <section className={styles.hero} aria-hidden="true">
+        <div className={styles.heroGlow} />
+        <div className={styles.heroContent}>
+          <div className={styles.heroMark}><TelegramMark /></div>
+          <p className={styles.kicker}>IPCHAT</p>
+          <h1>Private conversations, beautifully simple.</h1>
+          <p>Fast messaging, disappearing moments and owner-controlled safety in one clean experience.</p>
+          <div className={styles.heroCards}>
+            <div><span>⚡</span><strong>Fast</strong><small>Low-friction sign in</small></div>
+            <div><span>🔒</span><strong>Private</strong><small>Protected message storage</small></div>
+            <div><span>✨</span><strong>Modern</strong><small>Made for mobile first</small></div>
+          </div>
         </div>
+      </section>
 
-        {step === "phone" && (
-          <>
-            <h1 className="auth-title">Welcome back</h1>
-            <p className="auth-subtitle">Enter your number in international format. It is stored only as a one-way hash.</p>
-            <input
-              className="input input-mono"
-              placeholder="+917069316260"
-              value={phone}
-              onChange={(event) => setPhone(event.target.value.trim())}
-              inputMode="tel"
-              autoComplete="tel"
-              autoFocus
-            />
-            {error && <span className="field-error">{error}</span>}
-            <button className="btn btn-accent" disabled={loading || !phone}>
-              {loading ? "Requesting…" : "Request login code"}
-            </button>
-          </>
-        )}
+      <section className={styles.panel}>
+        <form
+          className={styles.card}
+          onSubmit={
+            step === "phone"
+              ? requestOtp
+              : step === "username"
+                ? (event) => {
+                    event.preventDefault();
+                    void submitOtp(digits.join(""), username);
+                  }
+                : (event) => event.preventDefault()
+          }
+        >
+          <div className={styles.mobileBrand}>
+            <div className={styles.logo}><TelegramMark /></div>
+            <div><strong>IPChat</strong><span>Private messenger</span></div>
+          </div>
 
-        {step === "otp" && (
-          <>
-            <h1 className="auth-title">Enter verification code</h1>
-            <p className="auth-subtitle">Requested for {phone}. Code expires in {countdown}.</p>
-            {delivery === "manual" && (
-              <div className="delivery-note">
-                <strong>Request received</strong>
-                The administrator will send your code manually. Keep this page open.
+          {step === "phone" && (
+            <>
+              <div className={styles.heading}>
+                <span className={styles.stepPill}>Welcome</span>
+                <h2>Sign in to IPChat</h2>
+                <p>Enter your phone number in international format. We only use it to verify your account.</p>
               </div>
-            )}
-            <div className="otp-input">
-              {digits.map((digit, index) => (
-                <input
-                  key={index}
-                  ref={(element) => { inputsRef.current[index] = element; }}
-                  className="input input-mono otp-digit"
-                  value={digit}
-                  onChange={(event) => handleDigitChange(index, event.target.value)}
-                  onKeyDown={(event) => handleKeyDown(index, event)}
-                  onPaste={handlePaste}
-                  inputMode="numeric"
-                  autoComplete={index === 0 ? "one-time-code" : "off"}
-                  maxLength={1}
-                  autoFocus={index === 0}
-                />
-              ))}
-            </div>
-            {error && <span className="field-error">{error}</span>}
-            {loading && <span className="auth-subtitle">Verifying…</span>}
-            <div className="auth-inline-actions">
-              <button type="button" className="btn btn-ghost" onClick={() => setStep("phone")}>Change number</button>
-              <button type="button" className="btn btn-ghost" disabled={loading || secondsLeft > 240} onClick={() => void requestCode()}>Resend</button>
-            </div>
-          </>
-        )}
 
-        {step === "username" && (
-          <>
-            <h1 className="auth-title">Choose your username</h1>
-            <p className="auth-subtitle">This is your public identity. Your phone number is never shown to other users.</p>
-            <input
-              className="input"
-              placeholder="username"
-              value={username}
-              onChange={(event) => setUsername(event.target.value.toLowerCase().replace(/[^a-z0-9_]/g, "").slice(0, 20))}
-              autoComplete="username"
-              autoFocus
-            />
-            {error && <span className="field-error">{error}</span>}
-            <button className="btn btn-accent" disabled={loading || username.length < 3}>
-              {loading ? "Creating account…" : "Create account"}
-            </button>
-          </>
-        )}
-      </form>
-    </div>
+              <label className={styles.fieldLabel} htmlFor="phone">Phone number</label>
+              <div className={styles.phoneField}>
+                <span>+</span>
+                <input
+                  id="phone"
+                  placeholder="917069316260"
+                  value={phone.replace(/^\+/, "")}
+                  onChange={(event) => setPhone(`+${event.target.value.replace(/\D/g, "").slice(0, 15)}`)}
+                  inputMode="tel"
+                  autoComplete="tel"
+                  autoFocus
+                />
+              </div>
+
+              {error && <div className={styles.error}>{error}</div>}
+
+              <button className={styles.primaryButton} disabled={loading || phone.length < 9}>
+                {loading ? <span className={styles.spinner} /> : "Continue"}
+              </button>
+
+              <div className={styles.securityNote}>
+                <LockIcon />
+                <span>Your number is hidden from other users.</span>
+              </div>
+            </>
+          )}
+
+          {step === "otp" && (
+            <>
+              <button type="button" className={styles.backButton} onClick={() => setStep("phone")}>← Back</button>
+              <div className={styles.heading}>
+                <span className={styles.stepPill}>Verification</span>
+                <h2>Enter your code</h2>
+                <p>We requested a 6-digit code for <strong>{phone}</strong>.</p>
+              </div>
+
+              {delivery === "manual" && (
+                <div className={styles.deliveryNote}>
+                  <span className={styles.deliveryDot} />
+                  <div><strong>Request received</strong><small>The administrator will send your code manually.</small></div>
+                </div>
+              )}
+
+              <div className={styles.otpRow}>
+                {digits.map((digit, index) => (
+                  <input
+                    key={index}
+                    ref={(element) => { inputsRef.current[index] = element; }}
+                    className={styles.otpDigit}
+                    value={digit}
+                    onChange={(event) => handleDigitChange(index, event.target.value)}
+                    onKeyDown={(event) => handleKeyDown(index, event)}
+                    onPaste={handlePaste}
+                    inputMode="numeric"
+                    autoComplete={index === 0 ? "one-time-code" : "off"}
+                    maxLength={1}
+                    aria-label={`OTP digit ${index + 1}`}
+                  />
+                ))}
+              </div>
+
+              <div className={styles.timer}>Code expires in <strong>{countdown}</strong></div>
+              {error && <div className={styles.error}>{error}</div>}
+              {loading && <div className={styles.verifying}><span className={styles.spinnerDark} /> Verifying code…</div>}
+
+              <button
+                type="button"
+                className={styles.textButton}
+                disabled={loading || secondsLeft > 240}
+                onClick={() => void requestCode()}
+              >
+                Resend code
+              </button>
+            </>
+          )}
+
+          {step === "username" && (
+            <>
+              <div className={styles.heading}>
+                <span className={styles.stepPill}>Almost done</span>
+                <h2>Choose your username</h2>
+                <p>This becomes your public identity. Your phone number stays private.</p>
+              </div>
+
+              <label className={styles.fieldLabel} htmlFor="username">Username</label>
+              <div className={styles.usernameField}>
+                <span>@</span>
+                <input
+                  id="username"
+                  placeholder="yourname"
+                  value={username}
+                  onChange={(event) => setUsername(event.target.value.toLowerCase().replace(/[^a-z0-9_]/g, "").slice(0, 20))}
+                  autoComplete="username"
+                  autoFocus
+                />
+              </div>
+              <small className={styles.hint}>3–20 characters · letters, numbers and underscore</small>
+
+              {error && <div className={styles.error}>{error}</div>}
+              <button className={styles.primaryButton} disabled={loading || username.length < 3}>
+                {loading ? <span className={styles.spinner} /> : "Create account"}
+              </button>
+            </>
+          )}
+
+          <p className={styles.footerNote}>By continuing, you agree to use IPChat responsibly.</p>
+        </form>
+      </section>
+    </main>
   );
 }
