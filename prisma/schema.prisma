@@ -29,17 +29,31 @@ enum RequestStatus {
   FULFILLED
 }
 
+enum StatusKind {
+  TEXT
+  SNAP
+}
+
+enum StatusAudience {
+  EVERYONE
+  CONTACTS
+}
+
 model User {
-  id          String   @id @default(cuid())
-  username    String   @unique
-  displayName String
-  phoneHash   String   @unique
-  phoneLast4  String
-  avatarUrl   String?
-  role        Role     @default(USER)
-  createdAt   DateTime @default(now())
-  lastSeenAt  DateTime @default(now())
-  isBanned    Boolean  @default(false)
+  id                   String   @id @default(cuid())
+  username             String   @unique
+  displayName          String
+  phoneHash            String   @unique
+  phoneLast4           String
+  avatarUrl            String?
+  role                 Role     @default(USER)
+  createdAt            DateTime @default(now())
+  lastSeenAt           DateTime @default(now())
+  isBanned             Boolean  @default(false)
+  bio                  String?
+  readReceipts         Boolean  @default(true)
+  showLastSeen         Boolean  @default(false)
+  allowMessageRequests Boolean  @default(true)
 
   memberships         ConversationParticipant[]
   sentMessages        Message[]                 @relation("SentMessages")
@@ -47,6 +61,9 @@ model User {
   dataRequestsMade    DataAccessRequest[]       @relation("RequestedBy")
   dataRequestsAboutMe DataAccessRequest[]       @relation("TargetUser")
   loginSessions       LoginSession[]
+  createdStatuses     Status[]                  @relation("StatusOwner")
+  statusViews         StatusView[]              @relation("StatusViewer")
+  statusReplies       StatusReply[]             @relation("StatusReplier")
 
   @@index([phoneHash])
 }
@@ -74,6 +91,50 @@ model LoginSession {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, revokedAt, lastSeenAt])
+}
+
+model Status {
+  id        String         @id @default(cuid())
+  userId    String
+  kind      StatusKind     @default(TEXT)
+  content   String
+  style     String         @default("sunset")
+  audience  StatusAudience @default(CONTACTS)
+  createdAt DateTime       @default(now())
+  expiresAt DateTime
+
+  user    User          @relation("StatusOwner", fields: [userId], references: [id], onDelete: Cascade)
+  views   StatusView[]
+  replies StatusReply[]
+
+  @@index([expiresAt])
+  @@index([userId, createdAt])
+}
+
+model StatusView {
+  id       String   @id @default(cuid())
+  statusId String
+  userId   String
+  viewedAt DateTime @default(now())
+
+  status Status @relation(fields: [statusId], references: [id], onDelete: Cascade)
+  user   User   @relation("StatusViewer", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([statusId, userId])
+  @@index([userId, viewedAt])
+}
+
+model StatusReply {
+  id        String   @id @default(cuid())
+  statusId  String
+  userId    String
+  content   String
+  createdAt DateTime @default(now())
+
+  status Status @relation(fields: [statusId], references: [id], onDelete: Cascade)
+  user   User   @relation("StatusReplier", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([statusId, createdAt])
 }
 
 model Conversation {

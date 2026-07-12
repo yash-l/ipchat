@@ -88,4 +88,11 @@ export async function verifySessionToken(token: string): Promise<SessionPayload 
   return verify(token);
 }
 
+export async function verifyActiveSessionToken(token: string): Promise<SessionPayload | null> {
+  const session = await verify(token);
+  if (!session) return null;
+  if (await isSessionRevoked(session.sessionId)) return null;
+  return session;
+}
+
 export { COOKIE_NAME, REVOKED_PREFIX };

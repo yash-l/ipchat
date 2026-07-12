@@ -173,6 +173,7 @@ export default function ChatPage() {
     if (!activeId || !content || sending) return;
 
     haptic("light");
+    haptic("light");
     setSending(true);
     setError(null);
     setDraft("");

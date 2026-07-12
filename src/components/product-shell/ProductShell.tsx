@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { haptic } from "@/lib/haptics";
 import { Icon } from "./Icon";
 import styles from "./product-shell.module.css";
@@ -13,19 +13,21 @@ const NAV = [
 
 export function ProductShell({ children, title }: { children: React.ReactNode; title: string }) {
   const path = usePathname();
+  const router = useRouter();
   const [light,setLight] = useState(false);
   useEffect(() => {
     const next = localStorage.getItem("ipchat-theme") === "light";
     setLight(next); document.documentElement.dataset.ipTheme = next ? "light" : "dark";
   }, []);
   function toggleTheme(){ haptic("light"); const next=!light; setLight(next); localStorage.setItem("ipchat-theme",next?"light":"dark"); document.documentElement.dataset.ipTheme=next?"light":"dark"; }
+  async function logout(){ haptic("warning"); await fetch("/api/auth/logout",{method:"POST"}); router.push("/login"); router.refresh(); }
   return <div className={styles.shell}>
     <aside className={styles.sidebar}>
       <Link className={styles.brand} href="/chat" onClick={()=>haptic()}><span>IP</span><div><strong>IPChat</strong><small>Private messenger</small></div></Link>
       <nav>{NAV.map(([href,label,icon])=>{const active=path===href||path.startsWith(href+"/");return <Link key={href} href={href} className={active?styles.active:""} onClick={()=>haptic()}><i><Icon name={icon}/></i><strong>{label}</strong><b/></Link>})}</nav>
-      <div className={styles.trust}><Icon name="shield"/><span><strong>Private by design</strong><small>Your number stays hidden.</small></span></div>
+      <div className={styles.trust}><Icon name="shield"/><span><strong>Private by design</strong><small>Your number stays hidden.</small></span></div><button className={styles.logout} onClick={()=>void logout()}><Icon name="logout"/><span>Log out</span></button>
     </aside>
-    <main><header className={styles.topbar}><span className={styles.mobileLogo}>IP</span><div><small>IPCHAT</small><strong>{title}</strong></div><button onClick={toggleTheme}><Icon name={light?"moon":"sun"}/></button></header><div className={styles.content}>{children}</div></main>
+    <main><header className={styles.topbar}><span className={styles.mobileLogo}>IP</span><div><small>IPCHAT</small><strong>{title}</strong></div><div className={styles.topActions}><button onClick={toggleTheme}><Icon name={light?"moon":"sun"}/></button><button className={styles.mobileLogout} onClick={()=>void logout()} aria-label="Log out"><Icon name="logout"/></button></div></header><div className={styles.content}>{children}</div></main>
     <nav className={styles.mobileNav}>{NAV.map(([href,label,icon])=>{const active=path===href||path.startsWith(href+"/");return <Link key={href} href={href} className={active?styles.active:""} onClick={()=>haptic()}><Icon name={icon}/><small>{label}</small></Link>})}</nav>
   </div>;
 }
