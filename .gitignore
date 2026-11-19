@@ -8,3 +8,12 @@
 .ipchat-backups/
 .next
 node_modules
+
+# Local development artifacts
+.env.*
+!.env.example
+coverage/
+playwright-report/
+test-results/
+.DS_Store
+Thumbs.db
