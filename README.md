@@ -66,7 +66,7 @@ service. This is a web app, not an APK or native application.
    npm run dev
    ```
 
-4. Open `http://localhost:3000/login`. The read-only service check is
+4. Open `http://localhost:3000/login`. The service check is
    `http://localhost:3000/api/health`; it returns HTTP 200 only when both
    Postgres and Redis respond.
 
