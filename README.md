@@ -1,75 +1,111 @@
-# Messenger
+# IPChat
 
-Phone-verified messaging with a compliance-oriented admin panel. Built for
-Next.js 14 (App Router) + Neon (Postgres, free tier) + Upstash (Redis, free
-tier), deployable to Vercel's free tier.
+IPChat is a **source-only Next.js web messenger prototype**. This repository does
+not currently provide a packaged desktop/mobile app, a GitHub release, or a
+verified public download. It needs your own Postgres and Redis services to run.
+The code is intended for development and review; do not expose it to untrusted
+users until authentication, media access, and deployment have been independently
+security tested.
 
-## What's actually implemented vs. stubbed
+## What the source currently does
 
-**Implemented and working:**
-- Phone number + OTP sign-in (OTP codes live in Upstash Redis with a 5-minute TTL, rate-limited)
-- Phone numbers are never stored in plaintext — only an HMAC hash + last 4 digits for display
-- Username-based identity (what other users see/search for)
-- 1:1 conversations, text messages, view-once photos that are server-side deleted after one view
-- Admin panel: data access **requests** → approve/deny → export, with every action written to an immutable audit log
-- Session auth via signed JWT in an httpOnly cookie, route protection via middleware
+- Provides phone/OTP sign-in, usernames, one-to-one text conversations, status
+  pages, settings, and an admin workspace.
+- Stores a keyed hash and last four digits of a phone in Postgres. In manual
+  delivery mode, Redis temporarily holds the full phone number and OTP for up
+  to five minutes so an existing administrator can relay the code.
+- Encrypts text message content **on the server** with AES-256-GCM before
+  database storage. Participants receive decrypted text from the API. This is
+  **not end-to-end encryption**.
+- Allows approved admin data-access requests to export user and message
+  metadata; the export route does not include message content. Actions are
+  recorded in database audit rows, which are not a tamper-proof external log.
+- Records view-once photo consumption by clearing the message's stored media
+  URL after a recipient view. It does **not** delete an externally hosted image.
 
-**Stubbed — you need to wire these up:**
-- **SMS sending**: `src/app/api/auth/request-otp/route.ts` has a `sendSms()` placeholder. In dev, codes are just printed to the server console so you can test the whole flow without an SMS bill. Plug in Twilio / Vonage / MSG91 / etc. before going live.
-- **Photo upload/storage**: the `mediaUrl` field expects a URL to already-uploaded media (e.g. a signed URL from Cloudflare R2, Backblaze B2, or Vercel Blob — all have free tiers). This scaffold doesn't include an upload endpoint.
-- **End-to-end encryption**: `Message.content` is currently plaintext at rest. For real "top-tier" privacy, encrypt on the client (e.g. via `libsodium-wrappers`) before sending, and store only ciphertext. The admin export intentionally does **not** decrypt content — it exports metadata only — so E2E and the compliance flow are designed to coexist.
-- **Realtime delivery**: messages currently require a page reload / poll to see new ones. Wiring up realtime (Upstash's Redis pub/sub, or a separate WebSocket service) is a follow-up.
-- **First admin account**: there's no signup flow for admins by design. Promote a user manually (see below).
+## Requirements
 
-## Local setup
+- Node.js **22.16.0** (see `.node-version` and `package.json`) and npm.
+- A disposable Postgres database for local development. The Prisma schema uses
+  `DATABASE_URL` for the pooled runtime connection and `DIRECT_URL` for schema
+  operations.
+- An Upstash Redis REST URL and token for OTPs and rate limits.
 
-1. **Neon**: create a free project at neon.tech. Copy the *pooled* connection string into `DATABASE_URL` and the *direct* connection string into `DIRECT_URL`.
-2. **Upstash**: create a free Redis database at upstash.com. Copy the REST URL + token into `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN`.
-3. Generate secrets:
+There is no bundled database, Redis server, SMS provider, or photo-upload
+service. This is a web app, not an APK or native application.
+
+## Local source setup
+
+1. Clone this repository, use Node.js 22.16.0, and install the locked
+   dependencies:
+
    ```bash
-   openssl rand -hex 32   # → JWT_SECRET
-   openssl rand -hex 32   # → PHONE_HASH_SECRET (use a DIFFERENT value than JWT_SECRET)
+   git clone https://github.com/yash-l/ipchat.git
+   cd ipchat
+   npm ci
    ```
-4. Copy `.env.example` to `.env` and fill in the values above.
-5. Install and push the schema:
+
+2. Copy `.env.example` to `.env`. Replace every placeholder with values for
+   your **disposable** Postgres and Redis resources. Generate three separate
+   random values for `JWT_SECRET`, `PHONE_HASH_SECRET`, and
+   `MESSAGE_ENCRYPTION_KEY`:
+
    ```bash
-   npm install
+   openssl rand -hex 32
+   ```
+
+   Use the resulting 64-character hex value for each variable, generating it
+   anew each time. Keep `.env` out of Git and never paste a real OTP or secret
+   into an issue.
+
+3. Apply the Prisma schema **only to that disposable database**, then start
+   the development server:
+
+   ```bash
    npm run db:push
-   ```
-6. Run it:
-   ```bash
    npm run dev
    ```
-7. Visit `/login`, enter a phone number in E.164 format (e.g. `+14155551234`), and check your terminal for the printed OTP code (dev mode only).
-8. Hit `/api/health` to confirm both Neon and Upstash are reachable.
 
-## Promoting a user to admin
+4. Open `http://localhost:3000/login`. The read-only service check is
+   `http://localhost:3000/api/health`; it returns HTTP 200 only when both
+   Postgres and Redis respond.
 
-There's deliberately no self-serve way to become an admin. After creating a
-normal account through `/login`, promote it directly in Neon's SQL console
-(or `npx prisma studio`):
+### First-login limitation
 
-```sql
-UPDATE "User" SET role = 'ADMIN' WHERE username = 'your_username';
-```
+The checked-in `.env.example` sets `OTP_DELIVERY_MODE=ADMIN_PORTAL`. This
+queues codes for an **already signed-in administrator** to deliver manually.
+On a fresh database there is no administrator yet, so the first login cannot
+be completed through the documented UI alone. Removing the mode in development
+returns a `development` response, but the current route logs only a phone
+hash, not the OTP code. SMS sending is not integrated. A reviewed, local-only
+bootstrap path or an authorized pre-provisioning procedure is needed before a
+fresh installation can complete its first sign-in. Do not use real phone
+numbers as a workaround.
 
-## Free-tier gotchas this project already accounts for
+After a user can verify a code, `src/app/api/auth/verify-otp/route.ts` assigns
+the `ADMIN` role when the verified number matches `OWNER_PHONE_E164`. This is
+not a substitute for the missing first-code delivery step.
 
-- **Neon connection limits**: the Prisma client is a singleton (`src/lib/db.ts`) reused across hot reloads/invocations, and uses Neon's *pooled* connection string, so you don't exhaust the free tier's connection cap under load.
-- **Upstash command budget**: OTPs use Redis `SET ... EX` (auto-expiring, no cleanup job needed) instead of a cron/sweep job, and the REST client means no lingering TCP connections eating into serverless execution time.
-- **Cold starts**: Prisma + Neon's pooled connection is compatible with Vercel's free-tier serverless functions (no persistent connection required).
-- **SMS cost**: dev mode never calls a real SMS provider — codes print to the console — so you can fully test the auth flow before spending anything on SMS.
+## Limits before a public launch
 
-## Deploying (Vercel free tier)
+- No implemented SMS provider or media upload/storage endpoint. Photo messages
+  accept an existing media URL; view-once handling is not file deletion.
+- No end-to-end encryption or pushed real-time delivery.
+- Authentication, media access, and public health responses need a separate
+  security review. A successful local build or service health response does not
+  establish production readiness.
+- `render.yaml` describes a Render web service and currently runs
+  `prisma db push` in its build command. Review and replace that schema-change
+  step with an approved migration/release process before attaching any
+  important database. This README does not endorse a production deploy.
+- There are currently no GitHub release binaries or verified download counts.
 
-1. Push this repo to GitHub.
-2. Import it in Vercel.
-3. Add all the `.env` values as Vercel environment variables (Project Settings → Environment Variables).
-4. Deploy. Vercel will run `npm run build`, which runs `prisma generate` first.
-5. Run `npm run db:push` once against your production `DATABASE_URL`/`DIRECT_URL` (from your local machine, pointed at prod env vars) to create the tables — or wire up `prisma migrate deploy` in a release step.
+## Source map
 
-## Security notes
-
-- The admin panel does **not** give standing read-access to message content. Every export requires a `DataAccessRequest` row, an approval step, and writes an `AuditLog` entry — there's no code path that skips this.
-- Phone numbers are hashed (HMAC-SHA256, keyed by `PHONE_HASH_SECRET`) before storage. Rotating `PHONE_HASH_SECRET` will invalidate lookups for existing users, so treat it like any other long-lived secret.
-- Rotate `JWT_SECRET` to invalidate all sessions at once if needed.
+| Area | Location |
+| --- | --- |
+| Sign-in and OTP delivery | `src/app/api/auth/`, `src/lib/otp.ts`, `src/lib/admin-otp.ts` |
+| Conversations and message encryption | `src/app/api/conversations/`, `src/lib/message-crypto.ts` |
+| Admin access requests and export | `src/app/api/admin/` |
+| Database models | `prisma/schema.prisma` |
+| Deployment blueprint | `render.yaml` |
